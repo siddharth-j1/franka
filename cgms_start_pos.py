@@ -1,7 +1,7 @@
 from franky import Robot, JointMotion, Affine, CartesianMotion, ReferenceType
 
 # 1. Connect and Clear Errors
-robot = Robot("192.168.1.15")
+robot = Robot("192.168.1.12")
 robot.recover_from_errors() 
 
 # 2. Safety First: Set speed to very slow (10%)

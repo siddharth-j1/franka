@@ -150,7 +150,7 @@ struct TrajectoryStep {
 };
 
 int main() {
-    std::string robot_ip = "192.168.1.15";
+    std::string robot_ip = "192.168.1.12";
     std::vector<TrajectoryStep> plan;
 
     std::cout << "1. Loading AI Trajectory into RAM..." << std::endl;

@@ -3,7 +3,7 @@ import time
 from franky import Robot, Affine, CartesianMotion, ReferenceType
 
 # --- CONFIGURATION ---
-ROBOT_IP = "192.168.1.15"  
+ROBOT_IP = "192.168.1.12"  
 MOVE_DISTANCE = 0.05     # 5 cm
 SPEED_SCALE = 0.05       # 5% Speed 
 
