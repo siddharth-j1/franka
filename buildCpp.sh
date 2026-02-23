@@ -1,8 +1,18 @@
 #!/bin/bash
 
-echo "Compiling C-GMS executable..."
+# Check if a filename was provided
+if [ -z "$1" ]; then
+    echo "Usage: ./buildCpp.sh <filename.cpp>"
+    exit 1
+fi
 
-g++ -O3 -Wall deploy_cgms.cpp -o run_cgms \
+# Extract the filename without extension for the output binary
+SOURCE_FILE=$1
+OUTPUT_BIN="${SOURCE_FILE%.*}"
+
+echo "Compiling $SOURCE_FILE into $OUTPUT_BIN..."
+
+g++ -O3 -Wall "$SOURCE_FILE" -o "$OUTPUT_BIN" \
 -I/home/siddharth/miniconda3/envs/franka/include \
 -I/home/siddharth/miniconda3/envs/franka/include/eigen3 \
 -L/home/siddharth/miniconda3/envs/franka/lib \
@@ -10,4 +20,8 @@ g++ -O3 -Wall deploy_cgms.cpp -o run_cgms \
 -Wl,-rpath,/home/siddharth/miniconda3/envs/franka/lib \
 -Wl,--disable-new-dtags
 
-echo "Build complete! You can now execute ./run_cgms"
+if [ $? -eq 0 ]; then
+    echo "Build complete! You can now run: ./$OUTPUT_BIN"
+else
+    echo "Build failed."
+fi
