@@ -3,12 +3,14 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <algorithm>
 
 #include <franka/robot.h>
 #include <franka/model.h>
 #include <franka/exception.h>
 #include <Eigen/Dense>
 
+// Struct for the planned trajectory from Python
 struct TrajectoryStep {
     double x, y, z;
     double qw, qx, qy, qz;
@@ -16,16 +18,21 @@ struct TrajectoryStep {
     Eigen::Matrix<double, 6, 6> D;
 };
 
+// Struct to save the actual hardware data
+struct LogEntry {
+    double x, y, z, qw, qx, qy, qz;
+};
+
 int main(int argc, char** argv) {
-    // Allows passing the CSV file as an argument!
-    std::string csv_file = (argc > 1) ? argv[1] : "decay_trajectory.csv";
+    // Dynamically load whichever CSV you pass in the terminal
+    std::string csv_file = (argc > 1) ? argv[1] : "quintic_trajectory.csv";
     std::string robot_ip = "192.168.1.12";
     std::vector<TrajectoryStep> plan;
 
     std::cout << "1. Loading 6D Trajectory: " << csv_file << std::endl;
     std::ifstream file(csv_file);
     if (!file.is_open()) {
-        std::cerr << "Error: Could not open " << csv_file << std::endl;
+        std::cerr << " Error: Could not open " << csv_file << std::endl;
         return -1;
     }
 
@@ -52,7 +59,7 @@ int main(int argc, char** argv) {
     }
     std::cout << "   -> Loaded " << plan.size() << " milliseconds of 6D data." << std::endl;
 
-    std::vector<Eigen::Vector3d> actual_positions(plan.size());
+    std::vector<LogEntry> actual_log(plan.size());
 
     try {
         std::cout << "2. Connecting to Franka hardware..." << std::endl;
@@ -60,12 +67,10 @@ int main(int argc, char** argv) {
         robot.automaticErrorRecovery();
         franka::Model model = robot.loadModel();
 
-
-
-        std::cout << "⚠️ PRESS ENTER TO EXECUTE 1000HZ LOOP ⚠️";
+        std::cout << " PRESS ENTER TO EXECUTE 1000HZ LOOP ";
         std::cin.ignore();
 
-        // CAPTURE INITIAL STATE RIGHT AT START
+        // CAPTURE INITIAL STATE RIGHT AT START for the Soft-Start
         franka::RobotState initial_state = robot.readOnce();
         Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
         Eigen::Vector3d initial_pos = initial_transform.translation();
@@ -76,7 +81,7 @@ int main(int argc, char** argv) {
 
         auto impedance_control_callback = [&](const franka::RobotState& robot_state, franka::Duration period) -> franka::Torques {
             
-            // 1. Get current state
+            // 1. Get current physical state
             Eigen::Affine3d transform(Eigen::Matrix4d::Map(robot_state.O_T_EE.data()));
             Eigen::Vector3d position = transform.translation();
             Eigen::Quaterniond orientation(transform.rotation());
@@ -87,18 +92,20 @@ int main(int argc, char** argv) {
             std::array<double, 7> coriolis_array = model.coriolis(robot_state);
             Eigen::Map<const Eigen::Matrix<double, 7, 1>> coriolis(coriolis_array.data());
 
-            // 2. Define Targets (With a 500ms blend-in to prevent discontinuity)
+            // 2. Save hardware data to log
+            actual_log[current_step] = {position.x(), position.y(), position.z(), 
+                                        orientation.w(), orientation.x(), orientation.y(), orientation.z()};
+
+            // 3. Get CSV Target and apply 500ms Soft-Start blend
             TrajectoryStep target = plan[current_step];
             Eigen::Vector3d target_pos_csv(target.x, target.y, target.z);
             Eigen::Quaterniond target_ori_csv(target.qw, target.qx, target.qy, target.qz);
 
-            // Smooth interpolation factor (0 to 1 over 0.5 seconds)
             double alpha = std::min(1.0, (double)current_step / 500.0);
-            
             Eigen::Vector3d target_pos = (1.0 - alpha) * initial_pos + alpha * target_pos_csv;
             Eigen::Quaterniond target_ori = initial_ori.slerp(alpha, target_ori_csv);
 
-            // 3. Error Calculation
+            // 4. Calculate 6D Error
             Eigen::Vector3d error_pos = target_pos - position;
 
             if (target_ori.coeffs().dot(orientation.coeffs()) < 0.0) { 
@@ -113,13 +120,12 @@ int main(int argc, char** argv) {
             error.head(3) << error_pos;
             error.tail(3) << error_ori_vec;
 
-            // 4. Control Law
+            // 5. Apply Impedance Law
             Eigen::Matrix<double, 6, 1> velocity = jacobian * dq;
             Eigen::Matrix<double, 6, 1> F_ext = target.K * error - target.D * velocity;
 
             Eigen::VectorXd tau_d = jacobian.transpose() * F_ext + coriolis;
             
-            // Final Safety: Torque Rate Limiting
             std::array<double, 7> tau_d_array;
             Eigen::VectorXd::Map(&tau_d_array[0], 7) = tau_d;
 
@@ -129,11 +135,21 @@ int main(int argc, char** argv) {
         };
 
         robot.control(impedance_control_callback);
-
         std::cout << " Hardware Execution Complete!" << std::endl;
 
+        // 6. Write Log to CSV
+        std::cout << "3. Saving hardware log to execution_log.csv..." << std::endl;
+        std::ofstream log_file("execution_log.csv");
+        log_file << "x,y,z,qw,qx,qy,qz\n";
+        for (const auto& entry : actual_log) {
+            log_file << entry.x << "," << entry.y << "," << entry.z << "," 
+                     << entry.qw << "," << entry.qx << "," << entry.qy << "," << entry.qz << "\n";
+        }
+        log_file.close();
+        std::cout << "Log saved successfully." << std::endl;
+
     } catch (const franka::Exception& e) {
-        std::cout << "Hardware Error: " << e.what() << std::endl;
+        std::cout << " Hardware Error: " << e.what() << std::endl;
     }
     return 0;
 }
