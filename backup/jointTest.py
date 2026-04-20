@@ -24,7 +24,7 @@ def main():
     
     # Read current joint angles (7 numbers)
     q_current = robot.current_joint_positions
-    print(f"   📍 Current Joints: {q_current}")
+    print(f"   Current Joints: {q_current}")
     
     # 3. Create Target (Move Joint 7 by +0.1 radians ~ 5 degrees)
     q_target = list(q_current)
@@ -33,7 +33,7 @@ def main():
     # 4. Limit Speed severely
     robot.relative_dynamics_factor = 0.05
     
-    print("\n⚠️  WARNING: Robot will rotate WRIST (Joint 7) slightly. ⚠️")
+    print("\n  WARNING: Robot will rotate WRIST (Joint 7) slightly.")
     input("   -> Press [ENTER] to execute...")
 
     # 5. Move using JOINT motion (Simpler than Cartesian)
@@ -41,15 +41,15 @@ def main():
     try:
         motion = JointMotion(q_target)
         robot.move(motion)
-        print("   ✅ Joint Move Complete!")
+        print("   Joint Move Complete!")
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"   Error: {e}")
 
     # 6. Move Back
     print("6. Moving Back...")
     motion_back = JointMotion(list(q_current))
     robot.move(motion_back)
-    print("   ✅ Done.")
+    print("   Done.")
 
 if __name__ == "__main__":
     main()

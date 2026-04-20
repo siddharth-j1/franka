@@ -186,7 +186,7 @@ int main() {
         Eigen::Vector3d initial_position = initial_transform.translation();
         Eigen::Quaterniond initial_orientation(initial_transform.rotation());
 
-        std::cout << "⚠️ PRESS ENTER TO EXECUTE 1000HZ LOOP ⚠️";
+        std::cout << "PRESS ENTER TO EXECUTE 1000HZ LOOP";
         std::cin.ignore();
 
         int current_step = 0;

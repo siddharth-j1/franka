@@ -12,8 +12,8 @@ robot.relative_dynamics_factor = 0.1
 ready_joints = [0.0, 0.0, 0.0, -2.2, 0.0, 2.2, 0.7]
 
 # Standard Franka Emika "Home" Position
-factory_home = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
-
+#factory_home = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+factory_home = [0.36845, -0.07430, 0.12793, -0.49720, 0.50683, 0.50370, 0.49214 ]
 
 print("Moving robot to default center position...")
 try:
@@ -23,3 +23,5 @@ try:
     print("Robot reset successfully.")
 except Exception as e:
     print(f" Reset failed: {e}")
+
+

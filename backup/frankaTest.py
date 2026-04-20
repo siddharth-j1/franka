@@ -38,7 +38,7 @@ def main():
     target_transform = Affine([MOVE_DISTANCE, 0.0, 0.0])
     motion_forward = CartesianMotion(target_transform, ReferenceType.Relative)
 
-    print(f"\n  WARNING: Robot is about to move {int(MOVE_DISTANCE*100)}cm along its X-axis. ⚠️")
+    print(f"\n  WARNING: Robot is about to move {int(MOVE_DISTANCE*100)}cm along its X-axis.")
     print("   -> Keep your hand on the E-Stop.")
     input("   -> Press [ENTER] to execute movement...")
 

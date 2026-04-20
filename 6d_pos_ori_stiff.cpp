@@ -38,6 +38,25 @@ int main(int argc, char** argv) {
 
     std::string line;
     std::getline(file, line); // Skip header
+    
+    // while (std::getline(file, line)) {
+    //     std::stringstream ss(line);
+    //     std::string val;
+    //     TrajectoryStep step;
+    //     std::vector<double> row;
+    //     while (std::getline(ss, val, ',')) { row.push_back(std::stod(val)); }
+        
+    //     step.x = row[0]; step.y = row[1]; step.z = row[2];
+    //     step.qw = row[3]; step.qx = row[4]; step.qy = row[5]; step.qz = row[6];
+        
+    //     step.K.setZero();
+    //     step.K.diagonal() << row[7], row[8], row[9], row[10], row[11], row[12];
+        
+    //     step.D.setZero();
+    //     step.D.diagonal() << row[13], row[14], row[15], row[16], row[17], row[18];
+        
+    //     plan.push_back(step);
+    // }
 
     while (std::getline(file, line)) {
         std::stringstream ss(line);
@@ -46,14 +65,41 @@ int main(int argc, char** argv) {
         std::vector<double> row;
         while (std::getline(ss, val, ',')) { row.push_back(std::stod(val)); }
         
+        // 🛑 FIREWALL 1: Enforce exact CSV dimensions (Now 25 columns)
+        if (row.size() != 25) {
+            std::cerr << "\n❌ CRITICAL ERROR: Your CSV has " << row.size() 
+                      << " columns, but this script strictly expects exactly 25!" << std::endl;
+            std::cerr << "Expected: x,y,z, qw,qx,qy,qz, K(9 elements), D(9 elements)" << std::endl;
+            return -1;
+        }
+
         step.x = row[0]; step.y = row[1]; step.z = row[2];
         step.qw = row[3]; step.qx = row[4]; step.qy = row[5]; step.qz = row[6];
         
+        // 🛑 FIREWALL 2: Validate the Quaternion
+        double q_norm = sqrt(step.qw*step.qw + step.qx*step.qx + step.qy*step.qy + step.qz*step.qz);
+        if (q_norm < 0.9 || q_norm > 1.1) {
+            std::cerr << "\n❌ CRITICAL ERROR: Quaternion norm is " << q_norm 
+                      << " on line " << plan.size() + 1 << "!" << std::endl;
+            std::cerr << "Row[3]-Row[6] do not contain a valid orientation." << std::endl;
+            return -1;
+        }
+
+        // 🛠️ BUILD THE 6x6 STIFFNESS MATRIX (Coupled Translation)
         step.K.setZero();
-        step.K.diagonal() << row[7], row[8], row[9], row[10], row[11], row[12];
+        step.K(0,0) = row[7];  step.K(0,1) = row[8];  step.K(0,2) = row[9];
+        step.K(1,0) = row[10]; step.K(1,1) = row[11]; step.K(1,2) = row[12];
+        step.K(2,0) = row[13]; step.K(2,1) = row[14]; step.K(2,2) = row[15];
+        // Set Rotation stiffness to a safe constant (50.0 N/rad) so the wrist doesn't go limp
+        step.K.diagonal().tail(3) << 50.0, 50.0, 50.0;
         
+        // 🛠️ BUILD THE 6x6 DAMPING MATRIX (Coupled Translation)
         step.D.setZero();
-        step.D.diagonal() << row[13], row[14], row[15], row[16], row[17], row[18];
+        step.D(0,0) = row[16]; step.D(0,1) = row[17]; step.D(0,2) = row[18];
+        step.D(1,0) = row[19]; step.D(1,1) = row[20]; step.D(1,2) = row[21];
+        step.D(2,0) = row[22]; step.D(2,1) = row[23]; step.D(2,2) = row[24];
+        // Set Rotation damping to a safe constant (14.0 Ns/rad)
+        step.D.diagonal().tail(3) << 14.0, 14.0, 14.0;
         
         plan.push_back(step);
     }
@@ -101,10 +147,15 @@ int main(int argc, char** argv) {
             Eigen::Vector3d target_pos_csv(target.x, target.y, target.z);
             Eigen::Quaterniond target_ori_csv(target.qw, target.qx, target.qy, target.qz);
 
+            //  THE ANTI-NaN FIREWALL: Prevent division-by-zero on flipped quaternions
+            if (initial_ori.coeffs().dot(target_ori_csv.coeffs()) < 0.0) {
+                target_ori_csv.coeffs() << -target_ori_csv.coeffs();
+            }
+
             double alpha = std::min(1.0, (double)current_step / 500.0);
             Eigen::Vector3d target_pos = (1.0 - alpha) * initial_pos + alpha * target_pos_csv;
             Eigen::Quaterniond target_ori = initial_ori.slerp(alpha, target_ori_csv);
-
+            
             // 4. Calculate 6D Error
             Eigen::Vector3d error_pos = target_pos - position;
 
@@ -126,12 +177,21 @@ int main(int argc, char** argv) {
 
             Eigen::VectorXd tau_d = jacobian.transpose() * F_ext + coriolis;
             
-            std::array<double, 7> tau_d_array;
-            Eigen::VectorXd::Map(&tau_d_array[0], 7) = tau_d;
+            // 🛑 THE ULTIMATE FIX: The Hardware Torque Rate Limiter
+            // Franka strictly aborts if torque changes by >= 1.0 Nm per millisecond
+            const double kDeltaTauMax = 0.99; 
+            std::array<double, 7> tau_d_rate_limited;
+            
+            for (size_t i = 0; i < 7; i++) {
+                // 1. Find the difference between our math and the robot's physical tension
+                double difference = tau_d[i] - robot_state.tau_J_d[i];
+                // 2. Clamp the jump to the safe hardware limit (0.99)
+                tau_d_rate_limited[i] = robot_state.tau_J_d[i] + std::max(std::min(difference, kDeltaTauMax), -kDeltaTauMax);
+            }
 
-            if (current_step >= max_step) { return franka::MotionFinished(franka::Torques(tau_d_array)); }
+            if (current_step >= max_step) { return franka::MotionFinished(franka::Torques(tau_d_rate_limited)); }
             current_step++;
-            return tau_d_array;
+            return tau_d_rate_limited;
         };
 
         robot.control(impedance_control_callback);
