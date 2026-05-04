@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
         step.K(1,0) = row[10]; step.K(1,1) = row[11]; step.K(1,2) = row[12];
         step.K(2,0) = row[13]; step.K(2,1) = row[14]; step.K(2,2) = row[15];
         // Set Rotation stiffness to a safe constant (50.0 N/rad) so the wrist doesn't go limp
-        step.K.diagonal().tail(3) << 50.0, 50.0, 50.0;
+        step.K.diagonal().tail(3) << 150.0, 150.0, 150.0;
         
         // 🛠️ BUILD THE 6x6 DAMPING MATRIX (Coupled Translation)
         step.D.setZero();
@@ -174,6 +174,8 @@ int main(int argc, char** argv) {
             // 5. Apply Impedance Law
             Eigen::Matrix<double, 6, 1> velocity = jacobian * dq;
             Eigen::Matrix<double, 6, 1> F_ext = target.K * error - target.D * velocity;
+
+            
 
             Eigen::VectorXd tau_d = jacobian.transpose() * F_ext + coriolis;
             

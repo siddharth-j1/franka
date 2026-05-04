@@ -365,7 +365,7 @@ from spatialmath import SE3, UnitQuaternion
 from franky import Robot, JointMotion
 
 # Will dynamically adapt to ANY trajectory you generate in the future
-CSV_FILENAME = "exp3b_trajectory.csv" 
+CSV_FILENAME = "exp2_trajectory.csv" 
 ROBOT_IP = "192.168.1.12" 
 
 def main():
